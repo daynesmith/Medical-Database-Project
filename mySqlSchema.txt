@@ -1,0 +1,134 @@
+-- Create Users Table
+CREATE TABLE Users (
+    user_id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    role ENUM('Admin', 'Doctor', 'Nurse', 'Patient') NOT NULL,
+    date_created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create Appointments Table
+CREATE TABLE Appointments (
+    appointment_id INT AUTO_INCREMENT PRIMARY KEY,
+    patient_id INT NOT NULL,
+    doctor_id INT NOT NULL,
+    appointment_date DATETIME NOT NULL,
+    status ENUM('Scheduled', 'Completed', 'Cancelled') DEFAULT 'Scheduled',
+    notes TEXT,
+    FOREIGN KEY (patient_id) REFERENCES Users(user_id),
+    FOREIGN KEY (doctor_id) REFERENCES Users(user_id)
+);
+
+-- Create Medical Records Table
+CREATE TABLE MedicalRecords (
+    record_id INT AUTO_INCREMENT PRIMARY KEY,
+    patient_id INT NOT NULL,
+    doctor_id INT NOT NULL,
+    visit_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    diagnosis TEXT NOT NULL,
+    treatment_plan TEXT,
+    FOREIGN KEY (patient_id) REFERENCES Users(user_id),
+    FOREIGN KEY (doctor_id) REFERENCES Users(user_id)
+);
+
+-- Create Prescriptions Table
+CREATE TABLE Prescriptions (
+    prescription_id INT AUTO_INCREMENT PRIMARY KEY,
+    record_id INT NOT NULL,
+    medication_name VARCHAR(100) NOT NULL,
+    dosage VARCHAR(50),
+    duration VARCHAR(50),
+    FOREIGN KEY (record_id) REFERENCES MedicalRecords(record_id)
+);
+
+-- Create Role Change Logs for Security
+CREATE TABLE RoleChangeLogs (
+    log_id INT AUTO_INCREMENT PRIMARY KEY,
+    admin_user_id INT NOT NULL,
+    target_user_id INT NOT NULL,
+    previous_role ENUM('Admin', 'Doctor', 'Nurse', 'Patient') NOT NULL,
+    new_role ENUM('Admin', 'Doctor', 'Nurse', 'Patient') NOT NULL,
+    change_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (admin_user_id) REFERENCES Users(user_id),
+    FOREIGN KEY (target_user_id) REFERENCES Users(user_id)
+);
+
+
+/////////
+/////////Triggers
+/////////
+
+-- Trigger: Log Appointment Creation
+CREATE TRIGGER LogAppointmentCreation
+AFTER INSERT ON Appointments
+FOR EACH ROW
+BEGIN
+    INSERT INTO RoleChangeLogs (admin_user_id, target_user_id, previous_role, new_role)
+    VALUES (NEW.doctor_id, NEW.patient_id, 'N/A', 'Appointment Created');
+END;
+
+-- Trigger: Prevent Duplicate Appointments
+CREATE TRIGGER PreventDuplicateAppointments
+BEFORE INSERT ON Appointments
+FOR EACH ROW
+BEGIN
+    DECLARE existing_count INT;
+    SELECT COUNT(*) INTO existing_count
+    FROM Appointments
+    WHERE doctor_id = NEW.doctor_id AND appointment_date = NEW.appointment_date;
+
+    IF existing_count > 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Duplicate appointment detected.';
+    END IF;
+END;
+
+
+/////////
+/////////Queries
+/////////
+
+SELECT * 
+FROM Appointments 
+WHERE doctor_id = 1 AND appointment_date > NOW();
+
+
+
+SELECT * 
+FROM MedicalRecords 
+WHERE patient_id = 5;
+
+
+
+
+SELECT COUNT(*) AS total_prescriptions 
+FROM Prescriptions;
+
+
+
+
+/////////
+/////////Report Queries
+/////////
+
+SELECT appointment_date, COUNT(*) AS total_appointments 
+FROM Appointments
+WHERE appointment_date >= CURDATE()
+GROUP BY appointment_date;
+
+
+SELECT diagnosis, COUNT(*) AS occurrences
+FROM MedicalRecords
+GROUP BY diagnosis
+ORDER BY occurrences DESC;
+
+
+SELECT * 
+FROM RoleChangeLogs;
+
+
+
+
+
